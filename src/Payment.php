@@ -26,6 +26,9 @@ use Idma\Robokassa\Exception\EmptyDescriptionException;
 class Payment {
     const CULTURE_EN = 'en';
     const CULTURE_RU = 'ru';
+    const CURRENCY_USD = 'USD';
+    const CURRENCY_EUR = 'EUR';
+    const CURRENCY_KZT = 'KZT';
 
     private $baseUrl      = 'https://merchant.roboxchange.com/Index.aspx?';
     private $isTestMode   = false;
@@ -56,11 +59,13 @@ class Payment {
             'MerchantLogin'  => $this->login,
             'InvId'          => null,
             'OutSum'         => 0,
+            'OutSumCurrency' => null,
             'Desc'           => null,
             'SignatureValue' => '',
             'Encoding'       => 'utf-8',
             'Culture'        => self::CULTURE_RU,
             'IncCurrLabel'   => '',
+            'ExpirationDate' => null,
             'IsTest'         => $testMode ? 1 : 0
         ];
     }
@@ -88,13 +93,25 @@ class Payment {
             throw new InvalidInvoiceIdException();
         }
 
-        $signature = vsprintf('%s:%01.2f:%u:%s', [
-            // '$login:$OutSum:$InvId:$passwordPayment'
-            $this->login,
-            $this->data['OutSum'],
-            $this->data['InvId'],
-            $this->paymentPassword
-        ]);
+        $signature = '';
+        if ($this->data['OutSumCurrency']) {
+            $signature = vsprintf('%s:%01.2f:%u:%s:%s', [
+                $this->login,
+                $this->data['OutSum'],
+                $this->data['InvId'],
+                $this->data['OutSumCurrency'],
+                $this->paymentPassword
+            ]);
+        }
+        else {
+            $signature = vsprintf('%s:%01.2f:%u:%s', [
+                // '$login:$OutSum:$InvId:$passwordPayment'
+                $this->login,
+                $this->data['OutSum'],
+                $this->data['InvId'],
+                $this->paymentPassword
+            ]);
+        }
 
         if ($this->customParams) {
             // sort params alphabetically
@@ -148,14 +165,23 @@ class Payment {
 
         $password = $this->{$passwordType . 'Password'};
 
-        $signature = vsprintf('%s:%u:%s%s', [
-            // '$OutSum:$InvId:$password[:$params]'
-            $data['OutSum'],
-            $data['InvId'],
-            $password,
-            $this->getCustomParamsString($this->data)
-        ]);
-
+        $signature = '';
+        if ($this->data['OutSumCurrency']) {
+            $signature = vsprintf('%s:%u:%s:%s', [
+                $data['OutSum'],
+                $data['InvId'],
+                $this->data['OutSumCurrency'],
+                $password
+            ]);
+        }
+        else {
+            $signature = vsprintf('%s:%u:%s', [
+                // '$OutSum:$InvId:$password[:$params]'
+                $data['OutSum'],
+                $data['InvId'],
+                $password
+            ]);
+        }
         $this->valid = (md5($signature) === strtolower($data['SignatureValue']));
 
         return $this->valid;
@@ -283,6 +309,18 @@ class Payment {
         }
     }
 
+    public function getSumCurrency()
+    {
+        return $this->data['OutSumCurrency'];
+    }
+
+    public function setSumCurrency($cur)
+    {
+        $this->data['OutSumCurrency'] = $cur;
+
+        return $this;
+    }
+
     /**
      * @return string
      */
@@ -351,6 +389,23 @@ class Payment {
     {
         $this->data['Email'] = $email;
         
+        return $this;
+    }
+
+    public static function getISO8601Time($hoursshift = 0)
+    {
+        return date('Y-m-d\TH:i:s.Z\Z', time() + $hoursshift * 60 * 60);
+    }
+
+    public function getExpirationDate()
+    {
+        return $this->data['ExpirationDate'];
+    }
+
+    public function setExpirationDate($expdate)
+    {
+        $this->data['ExpirationDate'] = $expdate;
+
         return $this;
     }
     
